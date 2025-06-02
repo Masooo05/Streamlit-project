@@ -1,8 +1,3 @@
-
-main.py
-+45
--33
-
 import pandas as pd
 import numpy as np
 from prophet import Prophet
