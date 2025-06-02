@@ -1,7 +1,13 @@
+
+main.py
++45
+-33
+
 import pandas as pd
 import numpy as np
 from prophet import Prophet
 import matplotlib.pyplot as plt
+import streamlit as st
 
 # 1) Carica i dati storici
 data = pd.read_csv("dati_simulati.csv", parse_dates=['ds']).sort_values('ds')
@@ -75,37 +81,40 @@ future_cli['festivo']     = 3 * future_liq['festivo']
 fc_liq = model_liq.predict(future_liq)
 fc_cli = model_cli.predict(future_cli)
 
-# 7) Plot
+# 7) Plot con Streamlit
 cutoff = liquidita_df['ds'].max()
-plt.figure(figsize=(14,7))
+fig, ax = plt.subplots(figsize=(14, 7))
 
 # storico
-plt.plot(liquidita_df.ds, liquidita_df.y, '--', c='navy', alpha=0.6, label='Storico Liquidità')
-plt.plot(clienti_df.ds, clienti_df.y, '--', c='darkgreen', alpha=0.6, label='Storico Clienti')
+ax.plot(liquidita_df.ds, liquidita_df.y, '--', c='navy', alpha=0.6, label='Storico Liquidità')
+ax.plot(clienti_df.ds, clienti_df.y, '--', c='darkgreen', alpha=0.6, label='Storico Clienti')
 
 # forecast + incertezza
-plt.plot(fc_liq.ds, fc_liq.yhat, color='navy', lw=2, label='Previsione Liquidità')
-plt.fill_between(
+ax.plot(fc_liq.ds, fc_liq.yhat, color='navy', lw=2, label='Previsione Liquidità')
+ax.fill_between(
     fc_liq.ds,
     fc_liq.yhat_lower,
     fc_liq.yhat_upper,
     color='navy', alpha=0.2
 )
 
-plt.plot(fc_cli.ds, fc_cli.yhat, color='darkgreen', lw=2, label='Previsione Clienti')
-plt.fill_between(
+ax.plot(fc_cli.ds, fc_cli.yhat, color='darkgreen', lw=2, label='Previsione Clienti')
+ax.fill_between(
     fc_cli.ds,
     fc_cli.yhat_lower,
     fc_cli.yhat_upper,
     color='darkgreen', alpha=0.2
 )
 # evidenzia futuro
-plt.axvspan(cutoff, fc_liq.ds.max(), color='gray', alpha=0.1, label='Periodo di Previsione')
+ax.axvspan(cutoff, fc_liq.ds.max(), color='gray', alpha=0.1, label='Periodo di Previsione')
 
-plt.title("Previsione 100 giorni per Liquidità e Affluenza Clienti\n(dati simulati con trend, stagionalità e regressori variabili)")
-plt.xlabel("Data")
-plt.ylabel("Valore")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
+ax.set_title(
+    "Previsione 100 giorni per Liquidità e Affluenza Clienti\n(dati simulati con trend, stagionalità e regressori variabili)"
+)
+ax.set_xlabel("Data")
+ax.set_ylabel("Valore")
+ax.legend()
+ax.grid(True)
+fig.tight_layout()
+
+st.pyplot(fig)
