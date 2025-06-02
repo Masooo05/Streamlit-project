@@ -1,0 +1,103 @@
+import pandas as pd
+import numpy as np
+from prophet import Prophet
+import matplotlib.pyplot as plt
+
+# 1) Carica i dati storici
+data = pd.read_csv("dati_simulati.csv", parse_dates=['ds']).sort_values('ds')
+
+# 2) Aggiungi trend, stagionalità e rumore ai target per renderli meno piatti
+n = len(data)
+# trend lineare
+trend_liq = np.linspace(0, 500, n)
+trend_cli = np.linspace(0, 50, n)
+# stagionalità settimanale artificiale (sinusoidale)
+seasonal = 300 * np.sin(2 * np.pi * data['ds'].dt.dayofweek / 7)
+seasonal_cli = 15 * np.sin(2 * np.pi * data['ds'].dt.dayofweek / 7)
+# rumore
+noise_liq = np.random.normal(0, 250, n)
+noise_cli = np.random.normal(0, 12, n)
+
+data['y_vendite'] = (
+    data['y_vendite']
+    + trend_liq
+    + seasonal
+    + noise_liq
+).round(0)
+
+data['y_clienti'] = (
+    data['y_clienti']
+    + trend_cli
+    + seasonal_cli
+    + noise_cli
+).round(0)
+
+# 3) Prepara i DataFrame per Prophet
+liquidita_df = data[['ds','y_vendite','meteo_temp','ads_tiktok','festivo']].rename(columns={'y_vendite':'y'})
+clienti_df  = data[['ds','y_clienti','meteo_temp','ads_tiktok','festivo']].rename(columns={'y_clienti':'y'})
+
+# 4) Inizializza e addestra i modelli con stagionalità settimanale esplicita
+model_liq = Prophet(weekly_seasonality=False)
+model_liq.add_seasonality(name='weekly', period=7, fourier_order=3)
+for reg in ['meteo_temp','ads_tiktok','festivo']:
+    model_liq.add_regressor(reg)
+model_liq.fit(liquidita_df)
+
+model_cli = Prophet(weekly_seasonality=False)
+model_cli.add_seasonality(name='weekly', period=7, fourier_order=3)
+for reg in ['meteo_temp','ads_tiktok','festivo']:
+    model_cli.add_regressor(reg)
+model_cli.fit(clienti_df)
+
+# 5) Crea future_dataframe per 100 giorni e costruisci regressori variabili
+future_liq = model_liq.make_future_dataframe(periods=1000)
+future_cli = model_cli.make_future_dataframe(periods=1000)
+
+# regressori futuri: ads ciclico, meteo con stagionalità mensile, festivi casuali
+days = np.arange(len(future_liq))
+future_liq['ads_tiktok']  = 50 + 100 * np.abs(np.sin(2*np.pi*days/30))
+future_liq['meteo_temp']  = 15 + 10 * np.sin(2*np.pi*days/365) + np.random.normal(0,1,len(days))
+future_liq['festivo']     = ((days % 15) == 0).astype(int)  # ogni 15 giorni
+
+future_cli['ads_tiktok']  = 2*future_liq['ads_tiktok']
+future_cli['meteo_temp']  = 5*future_liq['meteo_temp']
+future_cli['festivo']     = 3*future_liq['festivo']
+
+# 6) Genera le previsioni
+fc_liq = model_liq.predict(future_liq)
+fc_cli = model_cli.predict(future_cli)
+
+# 7) Plot
+cutoff = liquidita_df['ds'].max()
+plt.figure(figsize=(14,7))
+
+# storico
+plt.plot(liquidita_df.ds, liquidita_df.y, '--', c='navy', alpha=0.6, label='Storico Liquidità')
+plt.plot(clienti_df.ds, clienti_df.y, '--', c='darkgreen', alpha=0.6, label='Storico Clienti')
+
+# forecast + incertezza
+plt.plot(fc_liq.ds, fc_liq.yhat, color='navy', lw=2, label='Previsione Liquidità')
+plt.fill_between(
+    fc_liq.ds,
+    fc_liq.yhat_lower,
+    fc_liq.yhat_upper,
+    color='navy', alpha=0.2
+)
+
+plt.plot(fc_cli.ds, fc_cli.yhat, color='darkgreen', lw=2, label='Previsione Clienti')
+plt.fill_between(
+    fc_cli.ds,
+    fc_cli.yhat_lower,
+    fc_cli.yhat_upper,
+    color='darkgreen', alpha=0.2
+)
+# evidenzia futuro
+plt.axvspan(cutoff, fc_liq.ds.max(), color='gray', alpha=0.1, label='Periodo di Previsione')
+
+plt.title("Previsione 100 giorni per Liquidità e Affluenza Clienti\n(dati simulati con trend, stagionalità e regressori variabili)")
+plt.xlabel("Data")
+plt.ylabel("Valore")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
